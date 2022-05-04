@@ -1,15 +1,14 @@
 pragma solidity ^0.8.2;
 
 contract Token{
-    string public constant name = "Delete TikTok";
+    string public constant name = "Delete TikTok 3";
     string public constant symbol = "DTT";
+    uint public constant decimals = 18;
 
-    address public tokenOwner = 0xf6f03523a96788474A6c0603685075E7015a0559;
-    address public constant zeroAccount = address(0);
+    address public tokenOwner;
     
-    uint public constant decimal = 18;
-    uint public constant totalSupply = 10000 * 10 ** decimal;
-    uint public constant minimumSupply = 10000 * 5 ** decimal; 
+    uint public constant totalSupply = 1 * 10 ** decimals;
+    uint public constant minimumSupply = 1 * 5 ** decimals; 
     uint public constant burningRatioPerTransaction = 1; // 1% of tranfered token will be burned
 
     mapping(address => uint) public balances;
@@ -21,6 +20,7 @@ contract Token{
 
     constructor(){
         balances[msg.sender] = totalSupply;
+        tokenOwner = msg.sender;
     }
 
     function remainingSupply() public view returns(uint){
@@ -35,21 +35,24 @@ contract Token{
         return allowance[delegator][spender];
     }
 
-    function transfer(address to, uint amount) public returns(bool){
-        require(balanceOf(msg.sender) >= amount,'Sender does not have enough token.');
-        require(to != zeroAccount, "Cannot transfer from the zero address");
+    
 
+    function transfer(address to, uint amount) public returns(bool){
+        uint chargingAmount = amount + burningAmountCalculator(amount);
+        require(balanceOf(msg.sender) >= chargingAmount,"Sender does not have enough token.");
+        require(to != address(0), "Cannot transfer to the zero address");
         balances[to] += amount;
-        balances[msg.sender] -= amount;
+        balances[msg.sender] -= chargingAmount;
         emit Transfer(msg.sender, to, amount);
         return true;
     }
 
     function transferFromDelegator(address delegator, address spender, uint amount) public returns(bool){
-        require(balanceOf(delegator) >= amount, 'Delegator does not have enough token.');
-        require(allowanceOf(delegator,msg.sender) >= amount, 'Spender allowance is too low.');
+        uint chargingAmount = amount + burningAmountCalculator(amount);
+        require(balanceOf(delegator) >= chargingAmount, "Delegator does not have enough token.");
+        require(allowanceOf(delegator,msg.sender) >= amount, "Spender allowance is too low.");
         balances[spender] += amount;
-        balances[delegator] -= amount;
+        balances[delegator] -= chargingAmount;
         emit Transfer(delegator,spender,amount);
         return true;
     }
@@ -59,20 +62,18 @@ contract Token{
         return true;
     }
 
-    function autoBurnByTransferredToken(uint tranferedAmount) private returns(bool){
-        uint burnAmount = tranferedAmount * burningRatioPerTransaction / 100;
-        require(balanceOf(tokenOwner) - burnAmount >= minimumSupply);
-        transfer(zeroAccount,burnAmount);
-        return true;
+    function burningAmountCalculator(uint tranferedAmount) private pure returns(uint){
+        return tranferedAmount * burningRatioPerTransaction / 100;
     }
 
     function burn(uint amount) payable external{
-        require(msg.sender == tokenOwner,'Only Token Owner can burn the tokens.');
         require(balanceOf(tokenOwner) - amount >= minimumSupply);
-        transfer(zeroAccount,amount);
+        balances[msg.sender] -= amount;
+        emit Transfer(msg.sender, address(0), amount);
     }
 
     function transferOwnership(address newOwner) public returns(bool) {
+        require(msg.sender == tokenOwner,"Only token owner can transfer ownership.");
         require(newOwner != address(0));
         emit OwnershipTransferred(tokenOwner, newOwner);
         tokenOwner = newOwner;
@@ -80,6 +81,7 @@ contract Token{
     }
 
     function deleteSmartContract() public {
-
+        require(msg.sender == tokenOwner,"Only token owner can destroy this contract.");
+        selfdestruct(payable(tokenOwner));
     }
 }
